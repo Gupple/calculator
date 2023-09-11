@@ -6,8 +6,12 @@
 #include <string_view>
 #include "syntax_tree.hpp"
 
-std::optional<expr> parse(std::string_view& input, std::optional<expr>&& curr, std::optional<binary_op> op);
-std::optional<int> eval(expr const& exp);
+std::optional<syntax_tree::expr> parse(
+	std::string_view& input,
+	std::optional<syntax_tree::expr>&& curr,
+	std::optional<syntax_tree::binary_op> op
+);
+std::optional<int> eval(syntax_tree::expr const& exp);
 
 #endif
 
