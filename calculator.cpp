@@ -14,7 +14,7 @@ int main() {
 		}
 
 		std::string_view input(line);
-		auto exp = parse(input, std::optional<syntax_tree::expr>(), std::optional<syntax_tree::binary_op>());
+		auto exp = parse(input);
 		if (!exp) {
 			std::cout << "Parse error. Try again." << std::endl;
 			continue;

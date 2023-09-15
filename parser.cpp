@@ -1,220 +1,165 @@
 #include <iostream>
 #include <iterator>
 #include <string_view>
-#include <cctype>
 #include "parser.hpp"
 #include "syntax_tree.hpp"
 
-std::optional<char> get_token(std::string_view& input);
-bool empty(std::string_view& input);
-bool is_unary(char c);
-std::optional<syntax_tree::unary_op> unary(std::string_view& input);
-std::optional<syntax_tree::binary_op> binary(std::string_view& input);
-void consume_whitespace(std::string_view& input);
-bool consume_token(std::string_view& input, char c);
-void consume(std::string_view& input);
-int parse_int(std::string_view& input);
-
-std::optional<syntax_tree::expr> combine_unary(std::optional<syntax_tree::unary_op> op,
-					       std::optional<syntax_tree::expr>&& exp
-);
-
-std::optional<syntax_tree::expr> combine_binary(std::optional<syntax_tree::binary_op> op,
-						std::optional<syntax_tree::expr>&& left,
-						std::optional<syntax_tree::expr>&& right
-);
-
-std::optional<char> get_token(std::string_view& input) {
-	if (empty(input)) {
-		return std::optional<char>();
-	}
-	return std::make_optional<char>(input.front());
-}
-
-bool empty(std::string_view& input) {
-	consume_whitespace(input);
+bool empty(std::string_view input) {
 	return input.empty();
 }
 
-bool is_unary(char c) {
+std::optional<char> get_token(std::string_view input) {
+	if (empty(input)) {
+		return std::nullopt;
+	}
+	return input.front();
+}
+
+bool is_unary(std::optional<char> c) {
 	return c == '-';
 }
 
-std::optional<syntax_tree::unary_op> unary(std::string_view& input) {
-	auto c = get_token(input);
+bool is_binary(std::optional<char> c) {
+	return c == '+' || c == '-' || c == '*' || c == '/' || c == '%';
+}
+
+bool isspace(std::optional<char> c) {
+	return c == ' ' || c == '\f' || c == '\n' || c == '\r' || c == '\t' || c == '\v';
+}
+
+bool isdigit(std::optional<char> c) {
 	if (!c) {
-		return std::optional<syntax_tree::unary_op>();
+		return false;
+	}
+	return '0' <= *c && *c <= '9';
+}
+
+std::optional<syntax_tree::unary_op> unary(std::optional<char> c) {
+	if (!c) {
+		return std::nullopt;
 	}
 
 	switch (*c) {
 		case '-':
-			consume(input);
-			return std::optional<syntax_tree::unary_op>(syntax_tree::unary_op::neg);
+			return syntax_tree::unary_op::neg;
 		default:
-			return std::optional<syntax_tree::unary_op>();
+			return std::nullopt;
 	}
 }
 
-std::optional<syntax_tree::binary_op> binary(std::string_view& input) {
-	auto c = get_token(input);
+std::optional<syntax_tree::binary_op> binary(std::optional<char> c) {
 	if (!c) {
-		return std::optional<syntax_tree::binary_op>();
+		return std::nullopt;
 	}
 
 	switch (*c) {
 		case '+':
-			consume(input);
-			return std::optional<syntax_tree::binary_op>(syntax_tree::binary_op::add);
+			return syntax_tree::binary_op::add;
 		case '-':
-			consume(input);
-			return std::optional<syntax_tree::binary_op>(syntax_tree::binary_op::sub);
+			return syntax_tree::binary_op::sub;
 		case '*':
-			consume(input);
-			return std::optional<syntax_tree::binary_op>(syntax_tree::binary_op::mul);
+			return syntax_tree::binary_op::mul;
 		case '/':
-			consume(input);
-			return std::optional<syntax_tree::binary_op>(syntax_tree::binary_op::div);
+			return syntax_tree::binary_op::div;
 		case '%':
-			consume(input);
-			return std::optional<syntax_tree::binary_op>(syntax_tree::binary_op::mod);
+			return syntax_tree::binary_op::mod;
 		default:
-			return std::optional<syntax_tree::binary_op>();
+			return std::nullopt;
 	}
 }
 
-void consume_whitespace(std::string_view& input) {
-	int i = 0;
-	while (i < input.length() && std::isspace(input[i])) {
-		++i;
-	}
-	input = input.substr(i);
+std::string_view consume(std::string_view input) {
+	return input.substr(1);
 }
 
-bool consume_token(std::string_view& input, char c) {
-	if (empty(input)) {
-		return false;
+std::string_view consume_whitespace(std::string_view input) {
+	while (!empty(input) && isspace(get_token(input))) {
+		input = consume(input);
 	}
-	bool ret = input.front() == c;
-	consume(input);
-	return ret;
+	return input;
 }
 
-void consume(std::string_view& input) {
-	if (empty(input)) {
-		return;
+std::pair<bool, std::string_view> consume_token(std::string_view input, char c) {
+	auto token = get_token(input);
+	if (token != c) {
+		return {false, input};
 	}
-	input = input.substr(1);
+	return {true, consume(input)};
 }
 
-int parse_int(std::string_view& input) {
-	consume_whitespace(input);
-
+std::pair<int, std::string_view> parse_int(std::string_view input) {
 	int result = 0;
-	int i = 0;
-	while (i < input.length() && std::isdigit(input[i])) {
-		result = result * 10 + (input[i] - '0');
-		++i;
+	while (!empty(input)) {
+		auto token = get_token(input);
+		if (!isdigit(token)) {
+			break;
+		}
+
+		result = result * 10 + (*token - '0');
+		input = consume(input);
 	}
-	input = input.substr(i);
-	return result;
+	return {result, input};
 }
 
 std::optional<syntax_tree::expr> combine_unary(std::optional<syntax_tree::unary_op> op,
-					       std::optional<syntax_tree::expr>&& exp) {
+					       std::optional<syntax_tree::expr> exp) {
 	if (op && exp) {
-		return std::make_optional<syntax_tree::expr>(
-			syntax_tree::unary_syn(
-				*op,
-				*std::move(exp)
-			)
-		);
+		return syntax_tree::unary_syn{.op = *op, 
+			.exp = std::make_unique<syntax_tree::expr>(std::move(*exp))
+		};
 	}
 
-	return std::optional<syntax_tree::expr>();
+	return std::nullopt;
 }
 
 std::optional<syntax_tree::expr> combine_binary(std::optional<syntax_tree::binary_op> op,
-						std::optional<syntax_tree::expr>&& left,
-						std::optional<syntax_tree::expr>&& right) {
+						std::optional<syntax_tree::expr> left,
+						std::optional<syntax_tree::expr> right) {
 	if (left && !op && !right) {
-		return std::move(left);
+		return left;
 	}
 
 	if (!left && !op && right) {
-		return std::move(right);
+		return right;
 	}
 
 	if (left && op && right) {
-		return std::make_optional<syntax_tree::expr>(
-			syntax_tree::binary_syn(
-				*op,
-				*std::move(left),
-				*std::move(right)	
-			)
-		);
+		return syntax_tree::binary_syn{
+			.op = *op,
+			.left = std::make_unique<syntax_tree::expr>(std::move(*left)),
+			.right = std::make_unique<syntax_tree::expr>(std::move(*right))
+		};
 	}
 
-	return std::optional<syntax_tree::expr>();
+	return std::nullopt;
 }
 
-std::optional<syntax_tree::expr> parse(std::string_view& input,
-				       std::optional<syntax_tree::expr>&& curr,
+std::pair<std::optional<syntax_tree::expr>, std::string_view> parse_expr(std::string_view input,
+				       std::optional<syntax_tree::expr> curr,
 				       std::optional<syntax_tree::binary_op> op) {
-	if (empty(input)) {
-		return combine_binary(op, std::move(curr), std::optional<syntax_tree::expr>());
+	auto [exp, view] = parse_subexpr(consume_whitespace(input), std::nullopt, std::nullopt),
+	curr = combine_binary(op, std::move(curr), std::move(exp));
+	input = consume_whitespace(view);
+	
+	auto token = get_token(input);
+	if (!token) {
+		return {curr, input};
 	}
 
-	bool success = false;
-	std::optional<syntax_tree::expr> combined;
+	op = binary(input);
 
-	char token = *get_token(input);
-	if (token == '(') {
-		consume(input);
-		auto exp = parse(input, std::optional<syntax_tree::expr>(),
-		   std::optional<syntax_tree::binary_op>());
-		if (!consume_token(input, ')')) {
-			return std::optional<syntax_tree::expr>();
-		}
+	return {std::nullopt, input};
+}
 
-		success = true;
-		combined = combine_binary(op, std::move(curr), std::move(exp));
-	}
+std::pair<std::optional<syntax_tree::expr>, std::string_view> parse_subexpr(std::string_view input,
+					       std::optional<syntax_tree::expr> curr,
+					       std::optional<syntax_tree::binary_op> op) {
+	return {std::nullopt, input};
+}
 
-	else if (is_unary(token)) {
-		auto un = unary(input);
-		auto exp = parse(
-			input,
-			std::optional<syntax_tree::expr>(),
-			std::optional<syntax_tree::binary_op>()
-		);
-
-		success = true;
-		combined = combine_binary(
-			op,
-			std::move(curr),
-			combine_unary(un, std::move(exp))
-		);
-	}
-
-	else if (std::isdigit(token)) {
-		auto exp = std::make_optional<syntax_tree::expr>(
-			std::in_place_index<2>, 
-			parse_int(input)
-		);
-
-		success = true;
-		combined = combine_binary(op, std::move(curr), std::move(exp)); 
-	}
-
-	if (success) {
-		op = binary(input);
-		if (!op) {
-			return combined;
-		}
-		return parse(input, std::move(combined), op);
-	}
-
-	return std::optional<syntax_tree::expr>();
+std::optional<syntax_tree::expr> parse(std::string_view input) {
+	auto [result, view_unused] = parse_expr(input, std::nullopt, std::nullopt);
+	return result;
 }
 
 std::optional<int> eval(syntax_tree::expr const& exp) {

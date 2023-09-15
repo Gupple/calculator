@@ -13,27 +13,15 @@ namespace syntax_tree {
 
 	using expr = std::variant<binary_syn, unary_syn, int>;
 
-	class binary_syn {
-	public:
+	struct binary_syn {
 		binary_op op;
 		std::unique_ptr<expr> left;
 		std::unique_ptr<expr> right;
-
-		binary_syn() = delete;
-		binary_syn(binary_syn&&) noexcept = default;
-		binary_syn& operator=(binary_syn&&) noexcept = default;
-		binary_syn(binary_op, expr&&, expr&&) noexcept;
 	};
 
-	class unary_syn {
-	public:
+	struct unary_syn {
 		unary_op op;
 		std::unique_ptr<expr> exp;
-
-		unary_syn() = delete;
-		unary_syn(unary_syn&&) noexcept = default;
-		unary_syn& operator=(unary_syn&&) noexcept = default;
-		unary_syn(unary_op, expr&&) noexcept;
 	};
 }
 
