@@ -221,57 +221,67 @@ std::pair<std::optional<syntax_tree::expr>, std::string_view> parse_subexpr(std:
 }
 
 std::optional<syntax_tree::expr> parse(std::string_view input) {
-	auto [result, view_unused] = parse_expr(input, std::nullopt, std::nullopt);
+	auto [result, view] = parse_expr(input, std::nullopt, std::nullopt);
+	if (!empty(consume_whitespace(view))) {
+		return std::nullopt;
+	}
 	return result;
 }
 
+
 std::optional<int> eval(syntax_tree::expr const& exp) {
-	if (std::holds_alternative<syntax_tree::binary_syn>(exp)) {
-		auto const& e = std::get<syntax_tree::binary_syn>(exp);
-		auto left = eval(*e.left);
-		auto right = eval(*e.right);
+	struct visitor {
+		std::optional<int> operator()(syntax_tree::binary_syn const& b) {
+			visitor v{};
+			auto left = std::visit(v, *b.left);
+			auto right = std::visit(v, *b.right);
 
-		if (!left || !right) {
-			return std::optional<int>();
+			if (!left || !right) {
+				return std::nullopt;
+			}
+
+			int x = *left;
+			int y = *right;
+
+			switch (b.op) {
+				case syntax_tree::binary_op::add:
+					return x + y;
+				case syntax_tree::binary_op::sub:
+					return x - y;
+				case syntax_tree::binary_op::mul:
+					return x * y;
+				case syntax_tree::binary_op::div:
+					return y == 0 ? std::nullopt : std::make_optional<int>(x / y);
+				case syntax_tree::binary_op::mod:
+					return y == 0 ? std::nullopt : std::make_optional<int>(x % y);
+				default:
+					return std::nullopt;
+			}
 		}
 
-		switch (e.op) {
-			case syntax_tree::binary_op::add:
-				return std::make_optional<int>(*left + *right);
-			case syntax_tree::binary_op::sub:
-				return std::make_optional<int>(*left - *right);
-			case syntax_tree::binary_op::mul:
-				return std::make_optional<int>(*left * *right);
-			case syntax_tree::binary_op::div:
-				if (*right == 0) {
-					return std::optional<int>();
-				} else {
-					return std::make_optional<int>(*left / *right);
-				}
-			case syntax_tree::binary_op::mod:
-				if (*right == 0) {
-					return std::optional<int>();
-				} else {
-					return std::make_optional<int>(*left % *right);
-				}
-			default:
-				return std::optional<int>();
-		}
-	} else if (std::holds_alternative<syntax_tree::unary_syn>(exp)) {
-		auto const& e = std::get<syntax_tree::unary_syn>(exp);
-		auto val = eval(*e.exp);
-		if (!val) {
-			return std::optional<int>();
-		}
-		
-		switch (e.op) {
-		case syntax_tree::unary_op::neg:
-			return std::make_optional<int>(-(*val));
-		default:
-			return std::optional<int>();
-		}
-	}
+		std::optional<int> operator()(syntax_tree::unary_syn const& u) {
+			visitor v{};
+			auto val = std::visit(v, *u.exp);
+			if (!val) {
+				return std::nullopt;
+			}
 
-	return std::optional<int>(std::get<int>(exp));
+			int a = *val;
+
+			switch (u.op) {
+				case syntax_tree::unary_op::neg:
+					return -a;
+				default:
+					return std::nullopt;
+			}
+		}
+
+		std::optional<int> operator()(int a) {
+			return a;
+		}
+	};
+
+	visitor v{};
+	return std::visit(v, exp);
 }
 
