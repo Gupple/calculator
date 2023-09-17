@@ -4,6 +4,14 @@
 #include "parser.hpp"
 #include "syntax_tree.hpp"
 
+std::pair<std::optional<syntax_tree::expr>, std::string_view> parse_expr(std::string_view input,
+				       std::optional<syntax_tree::expr> curr,
+				       std::optional<syntax_tree::binary_op> op);
+
+std::pair<std::optional<syntax_tree::expr>, std::string_view> parse_subexpr(std::string_view input,
+				       std::optional<syntax_tree::expr> curr,
+				       std::optional<syntax_tree::binary_op> op);
+
 bool empty(std::string_view input) {
 	return input.empty();
 }
@@ -23,15 +31,24 @@ bool is_binary(std::optional<char> c) {
 	return c == '+' || c == '-' || c == '*' || c == '/' || c == '%';
 }
 
-bool isspace(std::optional<char> c) {
+bool is_space(std::optional<char> c) {
 	return c == ' ' || c == '\f' || c == '\n' || c == '\r' || c == '\t' || c == '\v';
 }
 
-bool isdigit(std::optional<char> c) {
+bool is_digit(std::optional<char> c) {
 	if (!c) {
 		return false;
 	}
 	return '0' <= *c && *c <= '9';
+}
+
+bool is_parens(std::optional<char> c) {
+	return c == '(' || c == ')';
+}
+
+bool is_valid(std::optional<char> c) {
+	return is_binary(c) || is_unary(c) ||
+	is_digit(c) || is_parens(c);
 }
 
 std::optional<syntax_tree::unary_op> unary(std::optional<char> c) {
@@ -73,7 +90,7 @@ std::string_view consume(std::string_view input) {
 }
 
 std::string_view consume_whitespace(std::string_view input) {
-	while (!empty(input) && isspace(get_token(input))) {
+	while (!empty(input) && is_space(get_token(input))) {
 		input = consume(input);
 	}
 	return input;
@@ -91,7 +108,7 @@ std::pair<int, std::string_view> parse_int(std::string_view input) {
 	int result = 0;
 	while (!empty(input)) {
 		auto token = get_token(input);
-		if (!isdigit(token)) {
+		if (!is_digit(token)) {
 			break;
 		}
 
@@ -137,23 +154,69 @@ std::optional<syntax_tree::expr> combine_binary(std::optional<syntax_tree::binar
 std::pair<std::optional<syntax_tree::expr>, std::string_view> parse_expr(std::string_view input,
 				       std::optional<syntax_tree::expr> curr,
 				       std::optional<syntax_tree::binary_op> op) {
-	auto [exp, view] = parse_subexpr(consume_whitespace(input), std::nullopt, std::nullopt),
+	auto [exp, view] = parse_subexpr(consume_whitespace(input), std::nullopt, std::nullopt);
 	curr = combine_binary(op, std::move(curr), std::move(exp));
 	input = consume_whitespace(view);
 	
 	auto token = get_token(input);
 	if (!token) {
-		return {curr, input};
+		return {std::move(curr), input};
 	}
 
-	op = binary(input);
+	if (!is_valid(token)) {
+		return {std::nullopt, input};
+	}
 
-	return {std::nullopt, input};
+	op = binary(token);
+	if (op) {
+		input = consume(input);
+		return parse_expr(input, std::move(curr), op);
+	}
+
+	return {std::move(curr), input};
 }
 
 std::pair<std::optional<syntax_tree::expr>, std::string_view> parse_subexpr(std::string_view input,
 					       std::optional<syntax_tree::expr> curr,
 					       std::optional<syntax_tree::binary_op> op) {
+	input = consume_whitespace(input);
+	auto token = get_token(input);
+	
+	if (is_digit(token)) {
+		auto [exp, view] = parse_int(input);
+		curr = combine_binary(op, std::move(curr), std::move(exp));
+		input = consume_whitespace(view);
+		return {std::move(curr), input};
+	}
+
+	else if (token == '(') {
+		input = consume(input);
+		auto [exp, view1] = parse_expr(input, std::nullopt, std::nullopt);
+		input = consume_whitespace(view1);
+
+		auto [success, view2] = consume_token(input, ')');
+		if (!success) {
+			return {std::nullopt, view2};
+		}
+
+		input = consume_whitespace(view2);
+		curr = combine_binary(op, std::move(curr), std::move(exp));
+		return {std::move(curr), input};
+	}
+
+	else if (is_unary(token)) {
+		auto un = unary(token);
+		input = consume(input);
+		auto [exp, view] = parse_subexpr(input, std::nullopt, std::nullopt);
+		curr = combine_binary(op, std::move(curr), combine_unary(un, std::move(exp)));
+		input = consume_whitespace(view);
+		return {std::move(curr), input};
+	}
+
+	else if (!token || is_valid(token)) {
+		return {std::move(curr), input};
+	}
+
 	return {std::nullopt, input};
 }
 
