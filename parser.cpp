@@ -225,7 +225,7 @@ std::optional<syntax_tree::expr> parse(std::string_view input) {
 	if (!empty(consume_whitespace(view))) {
 		return std::nullopt;
 	}
-	return result;
+	return std::move(result);
 }
 
 
